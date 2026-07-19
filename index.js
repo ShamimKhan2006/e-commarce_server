@@ -96,6 +96,7 @@ async function run() {
       } catch (error) {
         res.status(500).json({ error: "Failed to create product" });
       }
+      res.send(result)
     });
 
     // DELETE a product by ID
@@ -108,7 +109,8 @@ async function run() {
         res.json({ message: "Product deleted successfully" });
       } catch (error) {
         res.status(500).json({ error: "Failed to delete product" });
-      }
+      } 
+      res.send(result)
     });
 
     // ========================================
@@ -123,6 +125,7 @@ async function run() {
       } catch (error) {
         res.status(500).json({ error: "Failed to fetch testimonials" });
       }
+      res.send(testimonials)
     });
 
     // POST create a new testimonial
