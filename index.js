@@ -89,7 +89,7 @@ app.get("/products", async (req, res) => {
   }
 });
 
-app.get("/products/:id", async (req, res) => {
+app.get("/api/products/:id", async (req, res) => {
   try {
     const product = await db.collection("products").findOne({ _id: new ObjectId(req.params.id) });
     if (!product) return res.status(404).json({ error: "Product not found" });
@@ -99,7 +99,7 @@ app.get("/products/:id", async (req, res) => {
   }
 });
 
-app.post("/products", requireAuth, requireAdmin, async (req, res) => {
+app.post("/api/products", requireAuth, requireAdmin, async (req, res) => {
   try {
     const product = { ...req.body, createdAt: new Date() };
     const result = await db.collection("products").insertOne(product);
@@ -109,7 +109,7 @@ app.post("/products", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-app.put("/products/:id", requireAuth, requireAdmin, async (req, res) => {
+app.put("/api/products/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const updates = { ...req.body, updatedAt: new Date() };
     const result = await db.collection("products").updateOne({ _id: new ObjectId(req.params.id) }, { $set: updates });
