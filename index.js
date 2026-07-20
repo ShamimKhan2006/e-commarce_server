@@ -6,6 +6,13 @@ const multer = require("multer");
 const app = express();
 const port = process.env.PORT || 5000;
 
+// FIX: multer must be set up BEFORE any route uses `upload.single(...)`.
+// It was previously declared near the bottom of the file, which caused a
+// "Cannot access 'upload' before initialization" crash on startup because
+// the /upload route above referenced it before the const was initialized.
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
 let stripe;
 try {
   stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
@@ -422,6 +429,14 @@ app.get("/api/blog", async (req, res) => {
   res.json({ posts });
 });
 
+// FIX: added POST /api/blog as an alias for POST /api/blogs.
+// The frontend was calling POST /api/blog (singular) but only
+// POST /api/blogs (plural) existed, which caused the 404.
+app.post("/api/blog", requireAuth, requireAdmin, async (req, res) => {
+  req.url = "/api/blogs";
+  app.handle(req, res);
+});
+
 app.get("/api/blogs", async (req, res) => {
   try {
     const { slug, id } = req.query;
@@ -540,8 +555,8 @@ app.delete("/api/faqs/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
+// NOTE: duplicate multer setup removed from here — it now lives near the
+// top of the file, before it's referenced by the /upload route above.
 
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
