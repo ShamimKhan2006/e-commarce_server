@@ -451,8 +451,13 @@ app.all("/api/auth/*", (req, res) => {
 });
 
 connectDB().then(() => {
-  app.listen(port, "0.0.0.0", () => console.log(`🚀 Backend running on port ${port}`));
+  console.log("✅ MongoDB Connected");
 }).catch((err) => {
   console.error("MongoDB Error:", err);
-  process.exit(1);
 });
+
+if (require.main === module) {
+  app.listen(port, "0.0.0.0", () => console.log(`🚀 Backend running on port ${port}`));
+}
+
+module.exports = app;
