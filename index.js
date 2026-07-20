@@ -403,10 +403,33 @@ app.delete("/faqs/:id", requireAuth, requireAdmin, async (req, res) => {
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
+// app.post("/upload", upload.single("file"), async (req, res) => {
+//   try {
+//     if (!req.file) return res.status(400).json({ error: "No file" });
+//     const base64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+//     const imgbbKey = process.env.NEXT_IMAGE || process.env.IMGBB_API_KEY;
+//     if (!imgbbKey) return res.status(500).json({ error: "Upload not configured" });
+
+//     const formData = new FormData();
+//     formData.append("key", imgbbKey);
+//     formData.append("image", base64);
+
+//     const response = await fetch("https://api.imgbb.com/1/upload", { method: "POST", body: formData });
+//     const data = await response.json();
+//     if (!data.success || !data?.data?.url) return res.status(500).json({ error: data?.error?.message || "Upload failed" });
+//     res.json({ url: data.data.url, thumb: data.data.thumb?.url || data.data.url });
+//   } catch (e) {
+//     res.status(500).json({ error: "Upload failed" });
+//   }
+// }); 
+
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file" });
-    const base64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+
+    // ✅ imgbb wants raw base64, NOT the data:mime;base64, prefix
+    const base64 = req.file.buffer.toString("base64");
+
     const imgbbKey = process.env.NEXT_IMAGE || process.env.IMGBB_API_KEY;
     if (!imgbbKey) return res.status(500).json({ error: "Upload not configured" });
 
@@ -416,9 +439,14 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     const response = await fetch("https://api.imgbb.com/1/upload", { method: "POST", body: formData });
     const data = await response.json();
-    if (!data.success || !data?.data?.url) return res.status(500).json({ error: data?.error?.message || "Upload failed" });
+
+    if (!data.success || !data?.data?.url) {
+      console.error("imgbb error:", data); // 👈 log this to debug further if issue persists
+      return res.status(500).json({ error: data?.error?.message || "Upload failed" });
+    }
     res.json({ url: data.data.url, thumb: data.data.thumb?.url || data.data.url });
   } catch (e) {
+    console.error("Upload exception:", e); // 👈 also log the actual exception, not just generic message
     res.status(500).json({ error: "Upload failed" });
   }
 });
