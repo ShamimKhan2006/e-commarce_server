@@ -6,7 +6,6 @@ const multer = require("multer");
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Stripe
 let stripe;
 try {
   stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
@@ -14,24 +13,16 @@ try {
   console.warn("Stripe not installed or STRIPE_SECRET_KEY missing");
 }
 
-app.use(cors({
-  origin: (origin, callback) => {
-    const allowed = [
-      origin,
-      process.env.FRONTEND_URL,
-      "http://localhost:3000",
-      "https://e-commarce-client-five.vercel.app",
-      "https://e-commarce-server-sand.vercel.app",
-    ].filter(Boolean);
-    if (allowed.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  credentials: true,
-}));
+app.use(cors());
 app.use(express.json());
+
+app.use((req, res, next) => {
+  const url = req.url;
+  if (!url.startsWith("/api/") && url !== "/") {
+    req.url = `/api${url}`;
+  }
+  next();
+});
 
 const uri = process.env.MONGODB_URL;
 const client = new MongoClient(uri, {
@@ -60,8 +51,7 @@ const requireAdmin = (req, res, next) => {
 
 app.get("/", (req, res) => res.send("Backend Running"));
 
-// PRODUCTS
-app.get("/products", async (req, res) => {
+app.get("/api/products", async (req, res) => {
   try {
     const { category, search, sort, page = 1, limit = 20 } = req.query;
     const query = {};
@@ -120,7 +110,7 @@ app.put("/api/products/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-app.delete("/products/:id", requireAuth, requireAdmin, async (req, res) => {
+app.delete("/api/products/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = await db.collection("products").deleteOne({ _id: new ObjectId(req.params.id) });
     if (result.deletedCount === 0) return res.status(404).json({ error: "Not found" });
@@ -130,8 +120,7 @@ app.delete("/products/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// CATEGORIES
-app.get("/categories", async (req, res) => {
+app.get("/api/categories", async (req, res) => {
   try {
     const categories = await db.collection("products").distinct("category");
     res.json(categories);
@@ -140,8 +129,7 @@ app.get("/categories", async (req, res) => {
   }
 });
 
-// CHECKOUT - creates order + Stripe session
-app.post("/checkout", requireAuth, async (req, res) => {
+app.post("/api/checkout", requireAuth, async (req, res) => {
   try {
     const { items, total } = req.body;
     if (!items || !items.length) return res.status(400).json({ error: "Cart is empty" });
@@ -203,8 +191,7 @@ app.post("/checkout", requireAuth, async (req, res) => {
   }
 });
 
-// ORDERS
-app.post("/orders", requireAuth, async (req, res) => {
+app.post("/api/orders", requireAuth, async (req, res) => {
   try {
     const order = { ...req.body, userId: req.user.id, email: req.user.email, status: "Processing", createdAt: new Date() };
     const result = await db.collection("orders").insertOne(order);
@@ -214,7 +201,7 @@ app.post("/orders", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/orders", requireAuth, async (req, res) => {
+app.get("/api/orders", requireAuth, async (req, res) => {
   try {
     const query = req.user.role === "admin" ? {} : { userId: req.user.id };
     const orders = await db.collection("orders").find(query).sort({ createdAt: -1 }).toArray();
@@ -224,7 +211,20 @@ app.get("/orders", requireAuth, async (req, res) => {
   }
 });
 
-app.put("/orders/:id/status", requireAuth, requireAdmin, async (req, res) => {
+app.get("/api/orders/:id", requireAuth, async (req, res) => {
+  try {
+    const order = await db.collection("orders").findOne({ _id: new ObjectId(req.params.id) });
+    if (!order) return res.status(404).json({ error: "Not found" });
+    if (order.userId !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    res.json(order);
+  } catch (e) {
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+app.put("/api/orders/:id/status", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { status } = req.body;
     const result = await db.collection("orders").updateOne({ _id: new ObjectId(req.params.id) }, { $set: { status, updatedAt: new Date() } });
@@ -235,8 +235,7 @@ app.put("/orders/:id/status", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// WISHLIST
-app.get("/wishlist", requireAuth, async (req, res) => {
+app.get("/api/wishlist", requireAuth, async (req, res) => {
   try {
     const doc = await db.collection("wishlist").findOne({ userId: req.user.id });
     res.json({ items: doc?.items || [] });
@@ -245,7 +244,7 @@ app.get("/wishlist", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/wishlist", requireAuth, async (req, res) => {
+app.post("/api/wishlist", requireAuth, async (req, res) => {
   try {
     const { product } = req.body;
     const doc = await db.collection("wishlist").findOne({ userId: req.user.id });
@@ -259,7 +258,7 @@ app.post("/wishlist", requireAuth, async (req, res) => {
   }
 });
 
-app.delete("/wishlist", requireAuth, async (req, res) => {
+app.delete("/api/wishlist", requireAuth, async (req, res) => {
   try {
     await db.collection("wishlist").updateOne({ userId: req.user.id }, { $set: { items: [], updatedAt: new Date() } }, { upsert: true });
     res.json({ items: [] });
@@ -268,8 +267,7 @@ app.delete("/wishlist", requireAuth, async (req, res) => {
   }
 });
 
-// CUSTOMERS
-app.get("/admin/customers", requireAuth, requireAdmin, async (req, res) => {
+app.get("/api/admin/customers", requireAuth, requireAdmin, async (req, res) => {
   try {
     const users = await db.collection("user").find({}, { projection: { name: 1, email: 1, image: 1, role: 1, emailVerified: 1, createdAt: 1 } }).sort({ createdAt: -1 }).toArray();
     res.json({ users: users.map(u => ({ ...u, _id: u._id.toString() })) });
@@ -278,8 +276,23 @@ app.get("/admin/customers", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// BLOGS
-app.get("/blogs", async (req, res) => {
+app.get("/api/blog", async (req, res) => {
+  const { slug, id } = req.query;
+  if (slug) {
+    const post = await db.collection("blog").findOne({ slug: slug });
+    if (!post) return res.status(404).json({ error: "Not found" });
+    return res.json(post);
+  }
+  if (id) {
+    const post = await db.collection("blog").findOne({ _id: new ObjectId(id) });
+    if (!post) return res.status(404).json({ error: "Not found" });
+    return res.json(post);
+  }
+  const posts = await db.collection("blog").find({}).sort({ createdAt: -1 }).toArray();
+  res.json({ posts });
+});
+
+app.get("/api/blogs", async (req, res) => {
   try {
     const { slug, id } = req.query;
     if (slug) {
@@ -299,7 +312,7 @@ app.get("/blogs", async (req, res) => {
   }
 });
 
-app.post("/blogs", requireAuth, requireAdmin, async (req, res) => {
+app.post("/api/blogs", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { title, excerpt, content, coverImage, tags, published, slug } = req.body;
     const blog = {
@@ -321,7 +334,7 @@ app.post("/blogs", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-app.put("/blogs/:id", requireAuth, requireAdmin, async (req, res) => {
+app.put("/api/blogs/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = await db.collection("blog").updateOne({ _id: new ObjectId(req.params.id) }, { $set: { ...req.body, updatedAt: new Date() } });
     if (result.matchedCount === 0) return res.status(404).json({ error: "Not found" });
@@ -331,7 +344,7 @@ app.put("/blogs/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-app.delete("/blogs/:id", requireAuth, requireAdmin, async (req, res) => {
+app.delete("/api/blogs/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = await db.collection("blog").deleteOne({ _id: new ObjectId(req.params.id) });
     if (result.deletedCount === 0) return res.status(404).json({ error: "Not found" });
@@ -341,8 +354,7 @@ app.delete("/blogs/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// TESTIMONIALS
-app.get("/testimonials", async (req, res) => {
+app.get("/api/testimonials", async (req, res) => {
   try {
     const testimonials = await db.collection("testimonials").find({}).sort({ createdAt: -1 }).toArray();
     res.json(testimonials);
@@ -351,7 +363,7 @@ app.get("/testimonials", async (req, res) => {
   }
 });
 
-app.post("/testimonials", requireAuth, requireAdmin, async (req, res) => {
+app.post("/api/testimonials", requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = await db.collection("testimonials").insertOne({ ...req.body, createdAt: new Date() });
     res.status(201).json({ ...req.body, _id: result.insertedId });
@@ -360,7 +372,7 @@ app.post("/testimonials", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-app.delete("/testimonials/:id", requireAuth, requireAdmin, async (req, res) => {
+app.delete("/api/testimonials/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = await db.collection("testimonials").deleteOne({ _id: new ObjectId(req.params.id) });
     if (result.deletedCount === 0) return res.status(404).json({ error: "Not found" });
@@ -370,8 +382,7 @@ app.delete("/testimonials/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// FAQs
-app.get("/faqs", async (req, res) => {
+app.get("/api/faqs", async (req, res) => {
   try {
     const faqs = await db.collection("faqs").find({}).sort({ order: 1 }).toArray();
     res.json(faqs);
@@ -380,7 +391,7 @@ app.get("/faqs", async (req, res) => {
   }
 });
 
-app.post("/faqs", requireAuth, requireAdmin, async (req, res) => {
+app.post("/api/faqs", requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = await db.collection("faqs").insertOne({ ...req.body, createdAt: new Date() });
     res.status(201).json({ ...req.body, _id: result.insertedId });
@@ -389,7 +400,7 @@ app.post("/faqs", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-app.delete("/faqs/:id", requireAuth, requireAdmin, async (req, res) => {
+app.delete("/api/faqs/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = await db.collection("faqs").deleteOne({ _id: new ObjectId(req.params.id) });
     if (result.deletedCount === 0) return res.status(404).json({ error: "Not found" });
@@ -399,37 +410,13 @@ app.delete("/faqs/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// UPLOAD
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// app.post("/upload", upload.single("file"), async (req, res) => {
-//   try {
-//     if (!req.file) return res.status(400).json({ error: "No file" });
-//     const base64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
-//     const imgbbKey = process.env.NEXT_IMAGE || process.env.IMGBB_API_KEY;
-//     if (!imgbbKey) return res.status(500).json({ error: "Upload not configured" });
-
-//     const formData = new FormData();
-//     formData.append("key", imgbbKey);
-//     formData.append("image", base64);
-
-//     const response = await fetch("https://api.imgbb.com/1/upload", { method: "POST", body: formData });
-//     const data = await response.json();
-//     if (!data.success || !data?.data?.url) return res.status(500).json({ error: data?.error?.message || "Upload failed" });
-//     res.json({ url: data.data.url, thumb: data.data.thumb?.url || data.data.url });
-//   } catch (e) {
-//     res.status(500).json({ error: "Upload failed" });
-//   }
-// }); 
-
-app.post("/upload", upload.single("file"), async (req, res) => {
+app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file" });
-
-    // ✅ imgbb wants raw base64, NOT the data:mime;base64, prefix
     const base64 = req.file.buffer.toString("base64");
-
     const imgbbKey = process.env.NEXT_IMAGE || process.env.IMGBB_API_KEY;
     if (!imgbbKey) return res.status(500).json({ error: "Upload not configured" });
 
@@ -441,14 +428,26 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     const data = await response.json();
 
     if (!data.success || !data?.data?.url) {
-      console.error("imgbb error:", data); // 👈 log this to debug further if issue persists
+      console.error("imgbb error:", data);
       return res.status(500).json({ error: data?.error?.message || "Upload failed" });
     }
     res.json({ url: data.data.url, thumb: data.data.thumb?.url || data.data.url });
   } catch (e) {
-    console.error("Upload exception:", e); // 👈 also log the actual exception, not just generic message
+    console.error("Upload exception:", e);
     res.status(500).json({ error: "Upload failed" });
   }
+});
+
+app.post("/api/auth/get-session", (req, res) => {
+  res.status(200).json({ user: null, session: null });
+});
+
+app.post("/api/auth/sign-in/social", (req, res) => {
+  res.status(200).json({ message: "Social sign-in not configured", user: null });
+});
+
+app.all("/api/auth/*", (req, res) => {
+  res.status(501).json({ error: "Auth endpoint not implemented" });
 });
 
 connectDB().then(() => {
