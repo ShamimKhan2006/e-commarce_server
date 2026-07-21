@@ -508,7 +508,7 @@ app.post("/api/auth/sign-in/social", (req, res) => {
   res.status(200).json({ message: "Social sign-in not configured", user: null });
 });
 
-app.use("/api/auth", (req, res) => {
+app.use("/api/auth/:path*", (req, res) => {
   res.status(501).json({ error: "Auth endpoint not implemented" });
 });
 
