@@ -1,5 +1,10 @@
 const cors = require("cors");
-const helmet = require("helmet");
+let helmet;
+try {
+  helmet = require("helmet");
+} catch (e) {
+  console.warn("Helmet not installed; continuing without helmet middleware");
+}
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
@@ -22,7 +27,7 @@ try {
 }
 
 app.use(cors());
-app.use(helmet());
+if (helmet) app.use(helmet());
 app.use(express.json({ limit: "10mb" }));
 
 app.use((req, res, next) => {
