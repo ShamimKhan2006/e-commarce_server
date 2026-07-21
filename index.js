@@ -1,3 +1,4 @@
+require("dotenv").config();
 const cors = require("cors");
 let helmet;
 try {
@@ -5,17 +6,12 @@ try {
 } catch (e) {
   console.warn("Helmet not installed; continuing without helmet middleware");
 }
-require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
 const multer = require("multer");
 const app = express();
 const port = process.env.PORT || 5000;
 
-// FIX: multer must be set up BEFORE any route uses `upload.single(...)`.
-// It was previously declared near the bottom of the file, which caused a
-// "Cannot access 'upload' before initialization" crash on startup because
-// the /upload route above referenced it before the const was initialized.
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
@@ -92,6 +88,7 @@ app.get("/api/products", async (req, res) => {
     ]);
     res.json({ products, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } });
   } catch (e) {
+    console.error("GET /api/products error:", e);
     res.status(500).json({ error: "Failed to fetch products" });
   }
 });
@@ -102,6 +99,7 @@ app.get("/api/products/:id", async (req, res) => {
     if (!product) return res.status(404).json({ error: "Product not found" });
     res.json(product);
   } catch (e) {
+    console.error("GET /api/products/:id error:", e);
     res.status(500).json({ error: "Failed to fetch product" });
   }
 });
@@ -112,6 +110,7 @@ app.post("/api/products", requireAuth, requireAdmin, async (req, res) => {
     const result = await db.collection("products").insertOne(product);
     res.status(201).json({ ...product, _id: result.insertedId });
   } catch (e) {
+    console.error("POST /api/products error:", e);
     res.status(500).json({ error: "Failed to create product" });
   }
 });
@@ -123,6 +122,7 @@ app.put("/api/products/:id", requireAuth, requireAdmin, async (req, res) => {
     if (result.matchedCount === 0) return res.status(404).json({ error: "Not found" });
     res.json({ message: "Updated" });
   } catch (e) {
+    console.error("PUT /api/products/:id error:", e);
     res.status(500).json({ error: "Failed to update" });
   }
 });
@@ -133,6 +133,7 @@ app.delete("/api/products/:id", requireAuth, requireAdmin, async (req, res) => {
     if (result.deletedCount === 0) return res.status(404).json({ error: "Not found" });
     res.json({ message: "Deleted" });
   } catch (e) {
+    console.error("DELETE /api/products/:id error:", e);
     res.status(500).json({ error: "Failed to delete" });
   }
 });
@@ -142,6 +143,7 @@ app.get("/api/categories", async (req, res) => {
     const categories = await db.collection("products").distinct("category");
     res.json(categories);
   } catch (e) {
+    console.error("GET /api/categories error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -214,6 +216,7 @@ app.post("/api/orders", requireAuth, async (req, res) => {
     const result = await db.collection("orders").insertOne(order);
     res.status(201).json({ ...order, _id: result.insertedId });
   } catch (e) {
+    console.error("POST /api/orders error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -224,6 +227,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
     const orders = await db.collection("orders").find(query).sort({ createdAt: -1 }).toArray();
     res.json({ orders });
   } catch (e) {
+    console.error("GET /api/orders error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -237,6 +241,7 @@ app.get("/api/orders/:id", requireAuth, async (req, res) => {
     }
     res.json(order);
   } catch (e) {
+    console.error("GET /api/orders/:id error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -248,6 +253,7 @@ app.put("/api/orders/:id/status", requireAuth, requireAdmin, async (req, res) =>
     if (result.matchedCount === 0) return res.status(404).json({ error: "Not found" });
     res.json({ message: "Updated" });
   } catch (e) {
+    console.error("PUT /api/orders/:id/status error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -257,6 +263,7 @@ app.get("/api/wishlist", requireAuth, async (req, res) => {
     const doc = await db.collection("wishlist").findOne({ userId: req.user.id });
     res.json({ items: doc?.items || [] });
   } catch (e) {
+    console.error("GET /api/wishlist error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -271,6 +278,7 @@ app.post("/api/wishlist", requireAuth, async (req, res) => {
     await db.collection("wishlist").updateOne({ userId: req.user.id }, { $set: { items: updated, updatedAt: new Date() } }, { upsert: true });
     res.json({ items: updated, removed: exists });
   } catch (e) {
+    console.error("POST /api/wishlist error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -280,6 +288,7 @@ app.delete("/api/wishlist", requireAuth, async (req, res) => {
     await db.collection("wishlist").updateOne({ userId: req.user.id }, { $set: { items: [], updatedAt: new Date() } }, { upsert: true });
     res.json({ items: [] });
   } catch (e) {
+    console.error("DELETE /api/wishlist error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -289,32 +298,53 @@ app.get("/api/admin/customers", requireAuth, requireAdmin, async (req, res) => {
     const users = await db.collection("user").find({}, { projection: { name: 1, email: 1, image: 1, role: 1, emailVerified: 1, createdAt: 1 } }).sort({ createdAt: -1 }).toArray();
     res.json({ users: users.map(u => ({ ...u, _id: u._id.toString() })) });
   } catch (e) {
+    console.error("GET /api/admin/customers error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
 
 app.get("/api/blog", async (req, res) => {
-  const { slug, id } = req.query;
-  if (slug) {
-    const post = await db.collection("blog").findOne({ slug: slug });
-    if (!post) return res.status(404).json({ error: "Not found" });
-    return res.json(post);
+  try {
+    const { slug, id } = req.query;
+    if (slug) {
+      const post = await db.collection("blog").findOne({ slug: slug });
+      if (!post) return res.status(404).json({ error: "Not found" });
+      return res.json(post);
+    }
+    if (id) {
+      const post = await db.collection("blog").findOne({ _id: new ObjectId(id) });
+      if (!post) return res.status(404).json({ error: "Not found" });
+      return res.json(post);
+    }
+    const posts = await db.collection("blog").find({}).sort({ createdAt: -1 }).toArray();
+    res.json({ posts });
+  } catch (e) {
+    console.error("GET /api/blog error:", e);
+    res.status(500).json({ error: "Failed" });
   }
-  if (id) {
-    const post = await db.collection("blog").findOne({ _id: new ObjectId(id) });
-    if (!post) return res.status(404).json({ error: "Not found" });
-    return res.json(post);
-  }
-  const posts = await db.collection("blog").find({}).sort({ createdAt: -1 }).toArray();
-  res.json({ posts });
 });
 
-// FIX: added POST /api/blog as an alias for POST /api/blogs.
-// The frontend was calling POST /api/blog (singular) but only
-// POST /api/blogs (plural) existed, which caused the 404.
 app.post("/api/blog", requireAuth, requireAdmin, async (req, res) => {
-  req.url = "/api/blogs";
-  app.handle(req, res);
+  try {
+    const { title, excerpt, content, coverImage, tags, published, slug } = req.body;
+    const blog = {
+      title,
+      slug: slug || title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
+      excerpt: excerpt || content.slice(0, 140),
+      content,
+      coverImage: coverImage || "",
+      author: req.user.email,
+      tags: Array.isArray(tags) ? tags : [],
+      published: !!published,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const result = await db.collection("blog").insertOne(blog);
+    res.status(201).json({ ...blog, id: result.insertedId.toString() });
+  } catch (e) {
+    console.error("POST /api/blog error:", e);
+    res.status(500).json({ error: "Failed" });
+  }
 });
 
 app.get("/api/blogs", async (req, res) => {
@@ -333,6 +363,7 @@ app.get("/api/blogs", async (req, res) => {
     const posts = await db.collection("blog").find({}).sort({ createdAt: -1 }).toArray();
     res.json({ posts });
   } catch (e) {
+    console.error("GET /api/blogs error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -355,6 +386,7 @@ app.post("/api/blogs", requireAuth, requireAdmin, async (req, res) => {
     const result = await db.collection("blog").insertOne(blog);
     res.status(201).json({ ...blog, id: result.insertedId.toString() });
   } catch (e) {
+    console.error("POST /api/blogs error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -365,6 +397,7 @@ app.put("/api/blogs/:id", requireAuth, requireAdmin, async (req, res) => {
     if (result.matchedCount === 0) return res.status(404).json({ error: "Not found" });
     res.json({ message: "Updated" });
   } catch (e) {
+    console.error("PUT /api/blogs/:id error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -375,6 +408,7 @@ app.delete("/api/blogs/:id", requireAuth, requireAdmin, async (req, res) => {
     if (result.deletedCount === 0) return res.status(404).json({ error: "Not found" });
     res.json({ message: "Deleted" });
   } catch (e) {
+    console.error("DELETE /api/blogs/:id error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -384,6 +418,7 @@ app.get("/api/testimonials", async (req, res) => {
     const testimonials = await db.collection("testimonials").find({}).sort({ createdAt: -1 }).toArray();
     res.json(testimonials);
   } catch (e) {
+    console.error("GET /api/testimonials error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -393,6 +428,7 @@ app.post("/api/testimonials", requireAuth, requireAdmin, async (req, res) => {
     const result = await db.collection("testimonials").insertOne({ ...req.body, createdAt: new Date() });
     res.status(201).json({ ...req.body, _id: result.insertedId });
   } catch (e) {
+    console.error("POST /api/testimonials error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -403,6 +439,7 @@ app.delete("/api/testimonials/:id", requireAuth, requireAdmin, async (req, res) 
     if (result.deletedCount === 0) return res.status(404).json({ error: "Not found" });
     res.json({ message: "Deleted" });
   } catch (e) {
+    console.error("DELETE /api/testimonials/:id error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -412,6 +449,7 @@ app.get("/api/faqs", async (req, res) => {
     const faqs = await db.collection("faqs").find({}).sort({ order: 1 }).toArray();
     res.json(faqs);
   } catch (e) {
+    console.error("GET /api/faqs error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -421,6 +459,7 @@ app.post("/api/faqs", requireAuth, requireAdmin, async (req, res) => {
     const result = await db.collection("faqs").insertOne({ ...req.body, createdAt: new Date() });
     res.status(201).json({ ...req.body, _id: result.insertedId });
   } catch (e) {
+    console.error("POST /api/faqs error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -431,12 +470,10 @@ app.delete("/api/faqs/:id", requireAuth, requireAdmin, async (req, res) => {
     if (result.deletedCount === 0) return res.status(404).json({ error: "Not found" });
     res.json({ message: "Deleted" });
   } catch (e) {
+    console.error("DELETE /api/faqs/:id error:", e);
     res.status(500).json({ error: "Failed" });
   }
 });
-
-// NOTE: duplicate multer setup removed from here — it now lives near the
-// top of the file, before it's referenced by the /upload route above.
 
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
@@ -473,6 +510,20 @@ app.post("/api/auth/sign-in/social", (req, res) => {
 
 app.use("/api/auth", (req, res) => {
   res.status(501).json({ error: "Auth endpoint not implemented" });
+});
+
+app.use((err, req, res, next) => {
+  console.error("Unhandled server error:", err);
+  res.status(500).json({ error: "Internal server error" });
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled promise rejection:", err);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+  process.exit(1);
 });
 
 connectDB().catch((err) => {
