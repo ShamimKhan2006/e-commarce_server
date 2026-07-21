@@ -1,4 +1,5 @@
 const cors = require("cors");
+const helmet = require("helmet");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
@@ -21,7 +22,8 @@ try {
 }
 
 app.use(cors());
-app.use(express.json());
+app.use(helmet());
+app.use(express.json({ limit: "10mb" }));
 
 app.use((req, res, next) => {
   const url = req.url;
@@ -32,6 +34,9 @@ app.use((req, res, next) => {
 });
 
 const uri = process.env.MONGODB_URL;
+if (!uri) {
+  console.warn("Warning: MONGODB_URL is not set. Database connection may fail in production.");
+}
 const client = new MongoClient(uri, {
   serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true },
 });
@@ -465,10 +470,28 @@ app.use("/api/auth", (req, res) => {
   res.status(501).json({ error: "Auth endpoint not implemented" });
 });
 
-connectDB().then(() => {
-  console.log("✅ MongoDB Connected");
-}).catch((err) => {
+connectDB().catch((err) => {
   console.error("MongoDB Error:", err);
+});
+
+process.on("SIGINT", async () => {
+  console.log("🛑 SIGINT received, closing MongoDB connection...");
+  try {
+    await client.close();
+  } catch (e) {
+    console.error("Error closing MongoDB client:", e);
+  }
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  console.log("🛑 SIGTERM received, closing MongoDB connection...");
+  try {
+    await client.close();
+  } catch (e) {
+    console.error("Error closing MongoDB client:", e);
+  }
+  process.exit(0);
 });
 
 if (require.main === module) {
